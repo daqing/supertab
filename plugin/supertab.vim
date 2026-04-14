@@ -53,6 +53,9 @@
 " }}}
 
 if !has('nvim') && v:version < 900
+  echohl ErrorMsg
+  echom 'supertab requires vim 9.0 or higher. Please upgrade your vim or use an older version of supertab.'
+  echohl None
   finish
 endif
 
@@ -418,16 +421,18 @@ function! SuperTab(command) " {{{
       let b:complTypeManual = ''
     endif
 
+    let edge = exists('b:supertabCompletion') && b:supertabCompletion
+
     " exception: if in <c-p> mode, then <c-n> should move up the list, and
     " <c-p> down the list.
-    if a:command == 'p' && !b:complReset &&
+    if a:command == 'p' && !b:complReset && edge &&
       \ (b:complType == "\<c-p>" ||
       \   (b:complType == 'context' &&
       \    b:complTypeManual == '' &&
       \    b:complTypeContext == "\<c-p>"))
       return "\<c-n>"
 
-    elseif a:command == 'p' && !b:complReset &&
+    elseif a:command == 'p' && !b:complReset && edge &&
       \ (b:complType == "\<c-n>" ||
       \   (b:complType == 'context' &&
       \    b:complTypeManual == '' &&
@@ -439,9 +444,16 @@ function! SuperTab(command) " {{{
     elseif s:CompletionMode() && !b:complReset
       let type = b:complType == 'context' ? b:complTypeContext : b:complType
       if a:command == 'n'
-        return type == "\<c-p>" || type == "\<c-x>\<c-p>" ? "\<c-p>" : "\<c-n>"
+        return edge && (type == "\<c-p>" || type == "\<c-x>\<c-p>") ?
+          \ "\<c-p>" : "\<c-n>"
       endif
-      return type == "\<c-p>" || type == "\<c-x>\<c-p>" ? "\<c-n>" : "\<c-p>"
+      return edge && (type == "\<c-p>" || type == "\<c-x>\<c-p>") ?
+        \ "\<c-n>" : "\<c-p>"
+    endif
+
+    " set flag to indicate that supertab initiated the current completion mode
+    if exists('##CompleteDone')
+      let b:supertabCompletion = 1
     endif
 
     " handle 'context' completion.
@@ -945,6 +957,15 @@ endfunction " }}}
       autocmd InsertLeave,CursorMovedI * call s:ClosePreview()
     augroup END
   endif
+
+  " if we can, set a buffer var to indicate that the current completion mode was
+  " initiated by supertab, and clear that var when completion mode exits.
+  if exists('##CompleteDone')
+    augroup supertab_tracking
+      autocmd!
+      autocmd CompleteDone * unlet! b:supertabCompletion
+    augroup END
+  endif
 " }}}
 
 " Key Mappings {{{
@@ -955,8 +976,6 @@ endfunction " }}}
 
   imap <script> <Plug>SuperTabForward <c-r>=SuperTab('n')<cr>
   imap <script> <Plug>SuperTabBackward <c-r>=SuperTab('p')<cr>
-
-  let s:has_dict_maparg = v:version > 703 || (v:version == 703 && has('patch32'))
 
   " support delegating to smart tabs plugin
   if g:SuperTabMappingForward ==? '<tab>' || g:SuperTabMappingBackward ==? '<tab>'
@@ -972,18 +991,16 @@ endfunction " }}}
   " experimental and could be removed later.
   if g:SuperTabMappingForward ==? '<s-tab>' || g:SuperTabMappingBackward ==? '<s-tab>'
     let stab = maparg('<s-tab>', 'i')
-    if s:has_dict_maparg
-      let existing_stab = maparg('<s-tab>', 'i', 0, 1)
-      if len(existing_stab) && existing_stab.expr
-        if has_key(existing_stab, 'callback')
-          let s:ShiftTab = existing_stab.callback
-        else
-          let stab = substitute(stab, '<SID>\c', '<SNR>' . existing_stab.sid . '_', '')
-          let stab = substitute(stab, '()$', '', '')
-          let s:ShiftTab = function(stab)
-        endif
-        let stab = ''
+    let existing_stab = maparg('<s-tab>', 'i', 0, 1)
+    if len(existing_stab) && existing_stab.expr
+      if has_key(existing_stab, 'callback')
+        let s:ShiftTab = existing_stab.callback
+      else
+        let stab = substitute(stab, '<SID>\c', '<SNR>' . existing_stab.sid . '_', '')
+        let stab = substitute(stab, '()$', '', '')
+        let s:ShiftTab = function(stab)
       endif
+      let stab = ''
     endif
     if stab != ''
       let stab = substitute(stab, '\(<[-a-zA-Z0-9]\+>\)', '\\\1', 'g')
@@ -997,12 +1014,8 @@ endfunction " }}}
 
   if g:SuperTabCrMapping
     let expr_map = 0
-    if s:has_dict_maparg
-      let map_dict = maparg('<cr>', 'i', 0, 1)
-      let expr_map = has_key(map_dict, 'expr') && map_dict.expr
-    else
-      let expr_map = maparg('<cr>', 'i') =~? '\<cr>'
-    endif
+    let map_dict = maparg('<cr>', 'i', 0, 1)
+    let expr_map = has_key(map_dict, 'expr') && map_dict.expr
 
     redir => iabbrevs
     silent iabbrev

@@ -36,7 +36,7 @@ Supertab                                    *supertab*
 Supertab is a plugin which allows you to perform all your insert completion
 (|ins-completion|) using the tab key.
 
-Supertab requires Vim version 7.0 or above.
+Supertab requires Vim version 9.0 or above.
 
 ==============================================================================
 2. Supertab usage                           *supertab-usage*
